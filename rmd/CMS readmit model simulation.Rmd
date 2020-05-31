@@ -1,0 +1,94 @@
+---
+title: "The Impact of Variable Leakage Rates on OE Ratios a Logistic Model Simulation"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+ A cohort of **four hospitals** with 1,000 randomized cases each is generated with a dichotomous outcome variable **y = 30 day readmission status** and a single dichotomous risk factor  **x**. Overall, the **prevalence of y is 20%** *(readmission rate)* and the **prevalence of x is 10%**.  Varying portions of each of hospital's readmissions occurr at non-index hospitals and are  referred to as **Leakage Rates = 0%, 10%, 20% and 40%.** A Spearman rank (rho) **correlation between y and x = 0.45** is used to establish the strength of association of y with x in order to achieve an over all **ROC score of ~0.66** for a logistic model: *glm(y ~ x,family = binomial(link='logit'))*.  
+
+   \- Note: the x and y prevalences (p & q), leakage rates, /# hospitals, sample sizes (n.sim) and rho can all be customized. 
+```{r}
+rm(list=ls())
+library(tidyverse)
+# This snippet generates the data, called once for each hospital
+# All hospitals: y prevalence (q) ~ 20%; x prevalence (p) ~10%, N=1000
+#-----------------------------------------
+p=0.1; q=0.2; rho=0.45; n=1; n.sim <- 1000
+# Compute Pr(0,0) from rho, p=Pr(X=1), and q=Pr(Y=1).
+a <- function(rho, p, q) {
+   a.0  <- rho * sqrt(p*q*(1-p)*(1-q)) + (1-p)*(1-q)
+   prob <- c(`(0,0)`=a.0, `(1,0)`=1-q-a.0, `(0,1)`=1-p-a.0, `(1,1)`=a.0+p+q-1)
+   if (min(prob) < 0) {
+     print(prob)
+     stop("Error: a probability is negative.")
+   }
+   u <- sample.int(4, n.sim * n, replace=TRUE, prob=prob)
+   return(u)
+}
+#-----------------------------------------
+```
+
+**Hospital 1:** Generate 1000 random sample x,y cases, with leakage rate = 0% 
+```{r}
+set.seed(17);u <- a(rho, p, q);y <- floor((u-1)/2);x <- 1 - u %% 2
+Hosp1 <- data.frame(hosp=1,x=x,y=y)
+Hosp1$y_same_Hosp <-Hosp1$y * sample(c(rep(1,10)),n.sim,replace=T) # 0% leakage
+Hosp1$Leakage = rep(mean(Hosp1$y) - mean(Hosp1$y_same_Hosp),1000)
+```
+**Hospital 2:** Generate 1000 random sample x,y cases, with leakage rate = 10% 
+```{r}
+set.seed(18);u <- a(rho, p, q);y <- floor((u-1)/2);x <- 1 - u %% 2
+Hosp2 <- data.frame(hosp=2,x=x,y=y)
+Hosp2$y_same_Hosp <-Hosp2$y * sample(c(rep(1,9),rep(0,1)),n.sim,replace=T) #10% leakage
+Hosp2$Leakage = rep(mean(Hosp2$y) - mean(Hosp2$y_same_Hosp),1000)
+```
+**Hospital 3:** Generate 1000 random sample x,y cases, with leakage rate = 20% 
+```{r}
+set.seed(19);u <- a(rho, p, q);y <- floor((u-1)/2);x <- 1 - u %% 2
+Hosp3 <- data.frame(hosp=3,x=x,y=y)
+Hosp3$y_same_Hosp <-Hosp3$y * sample(c(rep(1,8),rep(0,2)),n.sim,replace=T) #20% leakage
+Hosp3$Leakage = rep(mean(Hosp3$y) - mean(Hosp3$y_same_Hosp),1000)
+```
+**Hospital 4:** Generate 1000 random sample x,y cases, with leakage rate = 20% 
+```{r}
+set.seed(20);u <- a(rho, p, q);y <- floor((u-1)/2);x <- 1 - u %% 2
+Hosp4 <- data.frame(hosp=4,x=x,y=y)
+Hosp4$y_same_Hosp <-Hosp4$y * sample(c(rep(1,6),rep(0,4)),n.sim,replace=T) #40% leakage
+Hosp4$Leakage = rep(mean(Hosp4$y) - mean(Hosp4$y_same_Hosp),1000)
+```
+**Model using all data** 
+```{r}
+Hosp_All <- rbind(Hosp1, Hosp2, Hosp3, Hosp4)
+ m1 <- glm(y ~ x , data = Hosp_All, family = binomial(link='logit'))
+ pROC::roc(response = Hosp_All$y, predictor = fitted(m1))
+ coef(summary(m1))[,'Pr(>|z|)']
+ m1$coefficients
+ b0=m1$coefficients[1]
+ b1=m1$coefficients[2]
+```
+Fit for all hospitals, **evaluted using *all* captured outcomes.**
+```{r}
+ roc0 <- pROC::roc(response = Hosp_All$y,           predictor = fitted(m1))
+ roc0
+ Obs_rate = sum(Hosp_All$y)/nrow(Hosp_All)
+ exp_rate = sum(exp(b0+b1*Hosp_All$x)/(1+exp(b0+b1*Hosp_All$x)))/nrow(Hosp_All)
+ oe_ratio = Obs_rate/exp_rate 
+ oe_ratio  # should = 1.00
+```
+Fit using same model but **evaluated assuming captured outcomes are same hospital only** 
+```{r}
+ roc1 <- pROC::roc(response = Hosp_All$y_same_Hosp, predictor = fitted(m1))
+ roc1
+ Obs_rate_same = sum(Hosp_All$y_same_Hosp)/nrow(Hosp_All)
+ exp_rate = sum(exp(b0+b1*Hosp_All$x)/(1+exp(b0+b1*Hosp_All$x)))/nrow(Hosp_All)
+ oe_ratio_same = Obs_rate_same/exp_rate 
+ oe_ratio_same # will be something < 1.00
+```
+```{r}
+plot(cars)
+```{r}
+plot(cars)

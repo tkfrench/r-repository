@@ -14,9 +14,10 @@ AllOutcomeVars      <- append(BinaryOutcomeVars, IntervalOutcomeVars)
 #  - Stratifiers: year, surgtype, fracture
 #  - Outcomes Binary type(2, one rare); Interval type (2)
 # --------------------------------------------------------------
-caseNum <- 500
+caseNum <- 5000
 provmnum =sample(1:1000,caseNum,replace=T); minNum = provmnum %%24+1; regNum = minNum %%5 +1
 mydata <- data.frame(
+  cohort     =sample(c(replicate(20, "A"), replicate(5, "B"), "C"), caseNum, replace=T),
   provider   =paste0("p",provmnum),     # calssify among 1000 providers
   ministry   =paste0("h",minNum),       # calssify among  24 Ministries
   region     =paste0("R",regNum),       # calssify among   5 Regions
@@ -24,12 +25,51 @@ mydata <- data.frame(
   month      =sample(1:12,caseNum,replace=T),
   surgtype   =rbinom(caseNum,1, 0.40),   # Stratifier
   fracture   =rbinom(caseNum,1, 0.60),   # Stratifier
+  outlier    =rbinom(caseNum,1, 0.50),   # Stratifier
   AnyComplicationFlag =rbinom(caseNum,1, 0.01), # Binary outcome, Make it rare!
   Readmit30Flag       =rbinom(caseNum,1, 0.30), # Binary outcome
-  PTExpScore          =rnorm(caseNum,68,8),     # Interval outcome
-  CompositeScore      =rnorm(caseNum,75,5)      # Interval toutcome
+  PTExpScore          =rnorm(caseNum, 0.68, 0.08),     # Interval outcome
+  LTRxpScore          =rnorm(caseNum, 0.78, 0.10)     # Interval outcome
+  #CompositeScore      =rnorm(caseNum,075,5)      # Interval toutcome
 )
 rm(caseNum, provmnum, minNum, regNum)
+
+mydata$comp <- (2*mydata$PTExpScore + 3*mydata$LTRxpScore)/(2+3)
+
+# creatt PTExpScore2 that includes missing values 
+mydata$PTExpScore2 <- ifelse(mydata$outlier==1,NA,mydata$PTExpScore)
+
+by_cohort <- mydata %>% group_by(cohort) %>% 
+  summarize(Sys_cases            = n(),
+            Sys_mean = mean(PTExpScore2,       na.rm = TRUE),
+            Sys_var  = var(PTExpScore2,        na.rm = TRUE),
+            Sys_n    = sum(!is.na(PTExpScore2),na.rm = TRUE),
+            LTRxpScore_mean = mean(LTRxpScore,       na.rm = TRUE),
+            LTRxpScore_var  = var(LTRxpScore,       na.rm = TRUE),
+            comp_mean = mean(comp,       na.rm = TRUE),
+            comp_var = var(comp,       na.rm = TRUE))
+
+by_cohort$comp_mean2 = (2*by_cohort$Sys_mean+ 3*by_cohort$LTRxpScore_mean)/(2+3)
+by_cohort$comp_var2  = (4*by_cohort$Sys_var*(by_cohort$Sys_n-1) + 9*by_cohort$LTRxpScore_var*(by_cohort$Sys_n-1))/
+                        (4+9+ by_cohort$Sys_n-1+by_cohort$Sys_n-1)
+
+by_cohort_ministry <- mydata  %>% group_by(cohort, ministry) %>% 
+  summarize(cases            = n(),
+            mean = mean(PTExpScore2,       na.rm = TRUE),
+            var  = var(PTExpScore2,        na.rm = TRUE),
+            n    = sum(!is.na(PTExpScore2),na.rm = TRUE)) 
+
+test <- merge(by_cohort,by_cohort_ministry, all=TRUE )
+
+test$partial_var2 <- test$n * test$Sys_var2 / test$Sys_n
+test
+test$varRatio <- test$Sys_var/test$var
+test$varRatio <- ifelse(test$varRatio>15000 | test$n < 5 , NA, test$varRatio)
+
+ggplot(test, aes(varRatio, n)) +geom_point()
+ggplot(test, aes(x=varRatio)) +geom_histogram()
+ggplot(test, aes(x=varRatio)) +geom_density()
+summary(test$varRatio)
 
 mydata %>%
   mutate(region  = factor(region),
@@ -197,3 +237,13 @@ allStats %>%
   #spread(term, estimate) %>%
   ggplot(aes(CompositeScore_mean, surgtype_fracture)) +
   geom_jitter(aes(colour= signif, size=CompositeScore_n),alpha=0.3,height=.25)
+
+mu <- 100
+s <- 50
+n <- 5
+nsim <- 10000 # number of simulations
+# theoretical standard error
+s / sqrt(n)
+# simulation of experiment and the standard deviations of their means
+y <- replicate( nsim, mean( rnorm(n, mu, s) ) )
+sd(y)
