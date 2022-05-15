@@ -1,0 +1,107 @@
+---
+title: "tables and sparklines"
+author: "Thomas French"
+date: "5/15/2022"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(kableExtra)
+```
+
+
+```{r echo=TRUE}
+
+
+
+#Convert time series to a data frame
+ap <- data.frame(passengers=as.matrix(AirPassengers), date=as.numeric(time(AirPassengers)))
+
+
+# convert date field into separate years and months
+ap_ym <- ap %>% mutate(year=year(date_decimal(date)),
+                       month = round((date-floor(date))*12,0)+1) %>% 
+  select(-2)
+
+# subdivide passengers by year
+ap_sp <- split(ap_ym$passengers,ap_ym$year)
+
+# summarise passengers by year
+ap_sum <- ap_ym %>% 
+  group_by(year) %>% 
+  summarise(min=min(passengers),
+            ave=round(mean(passengers),0),
+            max=max(passengers))
+
+#Build data frame skeleton
+ap_df <- data.frame(ap_sum,"Box_plot"="","Hist"="","Free_hist"="",
+                    "poly"="", "line_l"="","line_p"="","line_b"="")
+
+# Sparkline output
+ap_df %>%
+  kbl(booktabs = TRUE, caption = "Air Passengers 1949-1960") %>%
+  kable_styling(position = "left",bootstrap_options = "striped",full_width = FALSE) %>% 
+  column_spec(5, image = spec_boxplot(ap_sp,col="lightblue")) %>% 
+  column_spec(6, image = spec_hist(ap_sp)) %>% 
+  column_spec(7, image = spec_hist(ap_sp,same_lim = FALSE,col="lightblue")) %>%  
+  column_spec(8, image = spec_plot(ap_sp,same_lim = FALSE,col="lightblue",polymin =ap_df$ave)) %>% 
+  column_spec(9, image = spec_plot(ap_sp,same_lim = FALSE,col="lightblue",type="l")) %>% 
+  column_spec(10, image = spec_plot(ap_sp,same_lim = FALSE,col="lightblue",type = "p")) %>% 
+  column_spec(11, image = spec_plot(ap_sp,same_lim = FALSE,col="lightblue",type="b",cex=1,pch=4))
+
+
+```
+
+```{r echo=TRUE}
+
+Speed <- cars$speed
+Distance <- cars$dist
+plot(Speed, Distance, panel.first = grid(8, 8),
+     pch = 0, cex = 1.2, col = "blue")
+plot(Speed, Distance,
+     panel.first = lines(stats::lowess(Speed, Distance), lty = "dashed"),
+     pch = 0, cex = 1.2, col = "blue")
+
+## Show the different plot types
+x <- 0:12
+y <- sin(pi/5 * x)
+op <- par(mfrow = c(3,3), mar = .1+ c(2,2,3,1))
+for (tp in c("p","l","b",  "c","o","h",  "s","S","n")) {
+  plot(y ~ x, type = tp, main = paste0("plot(*, type = \"", tp, "\")"))
+  if(tp == "S") {
+    lines(x, y, type = "s", col = "red", lty = 2)
+    mtext("lines(*, type = \"s\", ...)", col = "red", cex = 0.8)
+  }
+}
+par(op)
+
+```
+
+
+```{r echo=TRUE}
+##--- Log-Log Plot  with  custom axes
+lx <- seq(1, 5, length.out = 41)
+yl <- expression(e^{-frac(1,2) * {log[10](x)}^2})
+y <- exp(-.5*lx^2)
+op <- par(mfrow = c(2,1), mar = par("mar")-c(1,0,2,0), mgp = c(2, .7, 0))
+plot(10^lx, y, log = "xy", type = "l", col = "purple",
+     main = "Log-Log plot", ylab = yl, xlab = "x")
+plot(10^lx, y, log = "xy", type = "o", pch = ".", col = "forestgreen",
+     main = "Log-Log plot with custom axes", ylab = yl, xlab = "x",
+     axes = FALSE, frame.plot = TRUE)
+my.at <- 10^(1:5)
+axis(1, at = my.at, labels = formatC(my.at, format = "fg"))
+e.y <- -5:-1 ; at.y <- 10^e.y
+axis(2, at = at.y, col.axis = "red", las = 1,
+     labels = as.expression(lapply(e.y, function(E) bquote(10^.(E)))))
+par(op)
+```
